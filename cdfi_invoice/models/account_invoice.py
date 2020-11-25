@@ -27,7 +27,8 @@ class AccountInvoice(models.Model):
     tipo_comprobante = fields.Selection(
         selection=[('I', 'Ingreso'), 
                    ('E', 'Egreso'),
-                    ('T', 'Traslado'),],
+                   ('T', 'Traslado')
+                  ],
         string=_('Tipo de comprobante'),
     )
     forma_pago = fields.Selection(
@@ -51,6 +52,7 @@ class AccountInvoice(models.Model):
                    ('28', '28 - Tarjeta de débito'), 
                    ('29', '29 - Tarjeta de servicios'), 
                    ('30', '30 - Aplicación de anticipos'), 
+                   ('31', '31 - Intermediario pagos'),
                    ('99', '99 - Por definir'),],
         string=_('Forma de pago'),
     )
@@ -326,7 +328,8 @@ class AccountInvoice(models.Model):
                  'percentage': tax_id.amount,
                  'amount': self.monto_impuesto, #tax['amount'],
                  'impuesto': tax_id.impuesto,
-                 'tipo_factor': tax_id.tipo_factor})
+                 'tipo_factor': tax_id.tipo_factor,
+                 'nombre': tax_id.impuesto_local,})
                 val = {'invoice_id': line.invoice_id.id,
                  'name': tax_id.tax_group_id.name,
                  'tax_id': tax['id'],
@@ -367,7 +370,8 @@ class AccountInvoice(models.Model):
                                       'clave_unidad': 'ACT',
                                       'taxes': product_taxes,
                                       'descuento': self.desc,
-                                      'numero_pedimento': line.pedimento})
+                                      'numero_pedimento': line.pedimento,
+                                      'numero_predial': line.predial})
             elif self.tipo_comprobante == 'T':
                 invoice_lines.append({'quantity': line.quantity,
                                       'unidad_medida': line.product_id.unidad_medida,
@@ -388,7 +392,9 @@ class AccountInvoice(models.Model):
                                       'clave_unidad': line.product_id.clave_unidad,
                                       'taxes': product_taxes,
                                       'descuento': self.desc,
-                                      'numero_pedimento': line.pedimento})
+                                      'numero_pedimento': line.pedimento,
+                                      'numero_predial': line.predial})
+
 
         self.discount = round(self.discount,2)
         if self.tipo_comprobante == 'T':
@@ -432,10 +438,12 @@ class AccountInvoice(models.Model):
                 if invoice.fecha_factura == False:
                     invoice.fecha_factura= datetime.datetime.now()
                     invoice.write({'fecha_factura': invoice.fecha_factura})
-                if invoice.estado_factura == 'factura_correcta':
-                    raise UserError(_('Error para timbrar factura, Factura ya generada.'))
+                if invoice.estado_factura == 'factura_correcta' and invoice.state == 'draft':
+                    continue
+                if invoice.estado_factura == 'factura_correcta' and invoice.state != 'draft':
+                    raise UserError(_('Error para validar factura, Factura ya generada.'))
                 if invoice.estado_factura == 'factura_cancelada':
-                    raise UserError(_('Error para timbrar factura, Factura ya generada y cancelada.'))
+                    raise UserError(_('Error para validar factura, Factura ya generada y cancelada.'))
                 values = invoice.to_json()
                 url=''
                 if invoice.company_id.proveedor_timbrado == 'multifactura':
@@ -834,7 +842,13 @@ class AccountInvoice(models.Model):
                     record.action_invoice_open()
                     record.action_cfdi_generate()
                 else:
-                    record.action_cfdi_generate()           
+                    record.action_cfdi_generate()
+
+    @api.multi
+    def action_invoice_cancel(self):
+        result = super(AccountInvoice, self).action_invoice_cancel()
+        self.write({'number': self.move_name})
+        return result
  
 class MailTemplate(models.Model):
     "Templates for sending email"
@@ -860,10 +874,10 @@ class MailTemplate(models.Model):
                     if not invoice.factura_cfdi:
                         continue
                     if invoice.estado_factura == 'factura_correcta' or invoice.estado_factura == 'solicitud_cancelar':
-                        xml_name = invoice.company_id.factura_dir + '/' + invoice.move_name.replace('/', '_') + '.xml'
+                        xml_name = invoice.company_id.factura_dir + '/' + invoice.number.replace('/', '_') + '.xml'
                         xml_file = open(xml_name, 'rb').read()
                         attachments = results[res_id]['attachments'] or []
-                        attachments.append(('CDFI_' + invoice.move_name.replace('/', '_') + '.xml', 
+                        attachments.append(('CDFI_' + invoice.number.replace('/', '_') + '.xml', 
                                             base64.b64encode(xml_file)))
                     else:
                         if invoice.number:
@@ -884,6 +898,7 @@ class AccountInvoiceLine(models.Model):
     _inherit = "account.invoice.line"
 
     pedimento = fields.Char('Pedimento')
+    predial = fields.Char('No. Predial')
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:            
     

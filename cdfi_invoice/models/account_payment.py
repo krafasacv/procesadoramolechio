@@ -9,7 +9,7 @@ from odoo.exceptions import UserError, Warning
 from . import amount_to_text_es_MX
 from reportlab.graphics.barcode import createBarcodeDrawing
 from reportlab.lib.units import mm
-from datetime import datetime, timedelta
+from datetime import date,datetime, timedelta
 import pytz
 from .tzlocal import get_localzone
 from odoo import tools
@@ -36,7 +36,8 @@ class AccountPayment(models.Model):
                    ('27', '27 - A satisfacción del acreedor'), 
                    ('28', '28 - Tarjeta de débito'), 
                    ('29', '29 - Tarjeta de servicios'), 
-                   ('30', '30 - Aplicación de anticipos'),],
+                   ('30', '30 - Aplicación de anticipos'),
+                   ('31', '31 - Intermediario pagos'), ],
                                 string=_('Forma de pago'), 
                             )
     tipo_comprobante = fields.Selection(
@@ -146,14 +147,14 @@ class AccountPayment(models.Model):
             return {'domain': {'payment_method_id': [('payment_type', '=', payment_type), ('id', 'in', payment_methods.ids)]}}
         return {}
     
-    #@api.onchange('payment_date')
-   # def _onchange_payment_date(self):
-      #  if self.payment_date:
-            #self.fecha_pago = datetime.strptime(self.payment_date, "%Y-%m-%d") + timedelta(hours=12)
+    @api.onchange('payment_date')
+    def _onchange_payment_date(self):
+        if self.payment_date:
+            self.fecha_pago = datetime.combine((self.payment_date), datetime.max.time())
 
     @api.multi
     def add_resitual_amounts(self):
-        if self.invoice_ids:
+        if self.invoice_ids and self.docto_relacionados != '[]':
             for invoice in self.invoice_ids:
                 data = json.loads(self.docto_relacionados) or []
                 for line in data:
@@ -169,6 +170,49 @@ class AccountPayment(models.Model):
                         line['monto_pagar'] = monto_pagar_docto #float(line.get('saldo_pendiente',False)) - monto_restante
                         line['saldo_restante'] = monto_restante
                         self.write({'docto_relacionados': json.dumps(data)})
+        elif self.reconciled_invoice_ids or self.invoice_ids and self.docto_relacionados == '[]':
+           # _logger.info('entra2 01')
+           # if self.docto_relacionados == '[]': #si está vacio
+               docto_relacionados = []
+               monto_pagado_asignar = round(self.monto_pagar,2)
+               for invoice in self.reconciled_invoice_ids:
+                    #_logger.info('entra2 02 %s', invoice.number)
+                    if invoice.factura_cfdi:
+                        #revisa la cantidad que se va a pagar en el docuemnto
+                        if self.currency_id.name != invoice.moneda:
+                            if self.currency_id.name == 'MXN':
+                            #   saldo_pendiente = round(invoice.residual*(1/res.currency_id.rate),2)
+                                tipocambiop = invoice.tipocambio #round(1/float(res.currency_id.rate),2) #
+                            else:
+                            #   saldo_pendiente = round(invoice.residual/float(invoice.tipocambio),2)
+                                tipocambiop = float(invoice.tipocambio)/float(self.currency_id.rate)
+                        else:
+                            #saldo_pendiente = round(invoice.residual,2)
+                            tipocambiop = invoice.tipocambio
+
+                        payment_dict = json.loads(invoice.payments_widget)
+                        payment_content = payment_dict['content']
+                        monto_pagado = 0
+                        for invoice_payments in payment_content:
+                            if invoice_payments['account_payment_id'] == self.id:
+                                #_logger.info('contenido %s cuantos hay %s', payment_content, len(payment_content))
+                                monto_pagado = invoice_payments['amount']
+                        docto_relacionados.append({
+                              'moneda': invoice.moneda,
+                              'tipodecambio': tipocambiop,
+                              'methodo_pago': invoice.methodo_pago,
+                              'iddocumento': invoice.folio_fiscal,
+                              'folio_facura': invoice.number_folio,
+                              'no_de_pago': len(payment_content), 
+                              'saldo_pendiente': round(invoice.residual + monto_pagado,2),
+                              'monto_pagar': monto_pagado,
+                              'saldo_restante': invoice.residual,
+                        })
+               saldo_pendiente_total = sum(inv.residual for inv in self.invoice_ids)
+               self.write({'docto_relacionados': json.dumps(docto_relacionados),
+                           'saldo_pendiente': saldo_pendiente_total, 'saldo_restante':saldo_pendiente_total - monto_pagado_asignar})
+         #   else: # si tieen información
+          #         _logger.info('entra2 04 %s', self.docto_relacionados)
 
     @api.model
     def create(self, vals):
@@ -195,7 +239,7 @@ class AccountPayment(models.Model):
                           'methodo_pago': invoice.methodo_pago,
                           'iddocumento': invoice.folio_fiscal,
                           'folio_facura': invoice.number_folio,
-                          'no_de_pago': len(invoice.payment_ids.filtered(lambda x: x.state!='cancelled')), 
+                          'no_de_pago': len(invoice.payment_ids.filtered(lambda x: x.state not in ['cancelled', 'draft']))+1, 
                           'saldo_pendiente': round(invoice.residual,2),
                           'monto_pagar': 0,
                           'saldo_restante': 0,
@@ -209,7 +253,7 @@ class AccountPayment(models.Model):
         res = super(AccountPayment, self).post()
         for rec in self:
             rec.add_resitual_amounts()
-            #rec._onchange_payment_date()
+            rec._onchange_payment_date()
             rec._onchange_journal()
         return res
 
@@ -250,28 +294,28 @@ class AccountPayment(models.Model):
             self.tipocambiop = '1'
         else:
             self.tipocambiop = self.currency_id.rate
+
+        timezone = self._context.get('tz')
+        if not timezone:
+            timezone = self.env.user.partner_id.tz or 'America/Mexico_City'
+        #timezone = tools.ustr(timezone).encode('utf-8')
+
         if not self.fecha_pago:
             raise Warning("Falta configurar fecha de pago en la sección de CFDI del documento.")
         else:
-            local = get_localzone()
+            local = pytz.timezone(timezone)
             naive_from = self.fecha_pago
             local_dt_from = naive_from.replace(tzinfo=pytz.UTC).astimezone(local)
             date_from = local_dt_from.strftime ("%Y-%m-%d %H:%M:%S")
-
         self.add_resitual_amounts()
 
         #corregir hora
-        timezone = self._context.get('tz')
-        if not timezone:
-            timezone = self.env.user.partner_id.tz or 'UTC'
-        #timezone = tools.ustr(timezone).encode('utf-8')
-
         local2 = pytz.timezone(timezone)
         naive_from2 = datetime.now() 
         local_dt_from2 = naive_from2.replace(tzinfo=pytz.UTC).astimezone(local2)
         date_payment = local_dt_from2.strftime ("%Y-%m-%d %H:%M:%S")
 
-        if self.invoice_ids:
+        if self.docto_relacionados != '[]':
             request_params = { 
                 'company': {
                       'rfc': self.company_id.rfc,
@@ -332,70 +376,7 @@ class AccountPayment(models.Model):
                 },
             }
         else:
-            request_params = { 
-                'company': {
-                      'rfc': self.company_id.rfc,
-                      'api_key': self.company_id.proveedor_timbrado,
-                      'modo_prueba': self.company_id.modo_prueba,
-                      'regimen_fiscal': self.company_id.regimen_fiscal,
-                      'postalcode': self.company_id.zip,
-                      'nombre_fiscal': self.company_id.nombre_fiscal,
-                },
-                'customer': {
-                      'name': self.partner_id.name,
-                      'rfc': self.partner_id.rfc,
-                      'uso_cfdi': 'P01',
-                },
-                'invoice': {
-                      'tipo_comprobante': self.tipo_comprobante,
-                      'folio_complemento': self.name.replace('CUST.IN','').replace('/',''),
-                      'serie_complemento': self.company_id.serie_complemento,
-                },
-                'concept': {
-                      'claveprodserv': '84111506',
-                      'calveunidad': 'ACT',
-                      'cantidad': 1,
-                      'descripcion': 'Pago',
-                },
-                'payment': {
-                      'moneda': self.monedap,
-                      'tipocambio': self.tipocambiop,
-                      'forma_pago': self.forma_pago,
-                      'numero_operacion': self.numero_operacion,
-                      'banco_emisor': self.banco_emisor,
-                      'cuenta_emisor': self.cuenta_emisor and self.cuenta_emisor.acc_number or '',
-                      'rfc_banco_emisor': self.rfc_banco_emisor,
-                      'banco_receptor': self.banco_receptor,
-                      'cuenta_beneficiario': self.cuenta_beneficiario,
-                      'rfc_banco_receptor': self.rfc_banco_receptor,
-                      'fecha_pago': datetime.strftime(self.fecha_pago, '%Y-%m-%d %H:%M:%S'), #correccion_hora.strftime('%Y-%m-%d %H:%M:%S'),
-                      'monto_factura': self.amount,
-                },
-                'docto_relacionado': [{
-                      'moneda': 'false',
-                      'tipodecambio': 'false',
-                      'iddocumento': 'false',
-                      'no_de_pago': 'false',
-                      'saldo_pendiente': 'false',
-                      'monto_pagar': 'false',
-                      'saldo_restante': 'false',
-                }],
-                'adicional': {
-                      'tipo_relacion': self.tipo_relacion,
-                      'uuid_relacionado': self.uuid_relacionado,
-                      'confirmacion': self.confirmacion,
-                },
-                'certificados': {
-                      'archivo_cer': archivo_cer.decode("utf-8"),
-                      'archivo_key': archivo_key.decode("utf-8"),
-                      'contrasena': self.company_id.contrasena,
-                },
-                'version': {
-                      'cfdi': '3.3',
-                      'sistema': 'odoo11',
-                      'version': '6',
-                },
-            }
+            raise Warning("No tiene ninguna factura ligada al documento de pago, debe al menos tener una factura ligada. \n Desde la factura crea el pago para que se asocie la factura al pago.")
         return request_params
     
     @api.multi
@@ -449,7 +430,7 @@ class AccountPayment(models.Model):
                                                 'res_model': self._name,
                                                 'res_id': p.id,
                                                 'type': 'binary'
-                                            })	
+                                            })
                 report = self.env['ir.actions.report']._get_report_from_name('cdfi_invoice.report_payment')
                 report_data = report.render_qweb_pdf([p.id])[0]
                 pdf_file_name = p.name.replace('/', '_') + '.pdf'
@@ -594,9 +575,9 @@ class AccountPayment(models.Model):
                           }
                 if p.company_id.proveedor_timbrado == 'multifactura':
                     url = '%s' % ('http://facturacion.itadmin.com.mx/api/refund')
-                elif invoice.company_id.proveedor_timbrado == 'multifactura2':
+                elif p.company_id.proveedor_timbrado == 'multifactura2':
                     url = '%s' % ('http://facturacion2.itadmin.com.mx/api/refund')
-                elif invoice.company_id.proveedor_timbrado == 'multifactura3':
+                elif p.company_id.proveedor_timbrado == 'multifactura3':
                     url = '%s' % ('http://facturacion3.itadmin.com.mx/api/refund')
                 elif p.company_id.proveedor_timbrado == 'gecoerp':
                     if p.company_id.modo_prueba:
