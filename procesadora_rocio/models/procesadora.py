@@ -80,12 +80,12 @@ class procesadora(models.Model):
                 'date_due': record.date_due,
                 'date': record.date,
                 'payment_term_id': cliente.property_payment_term_id.id,
-                'user_id': user.id,
+                'user_id': record.user.id,
                 'x_idorigen': record.id,
                 'company_id': cia,
                 'journal_id': 27,  # de donde se puedo tomar este dato ?????
-                'create_uid': user.id,
-                'write_uid': user.id,
+                'create_uid': record.user.id,
+                'write_uid': record.user.id,
                 'partner_shipping_id': cliente.id,
                 'x_estado_de_promocion': 'Sin promoción'
                 }
