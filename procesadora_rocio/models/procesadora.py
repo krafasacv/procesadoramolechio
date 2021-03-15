@@ -31,7 +31,7 @@ class procesadora(models.Model):
           'date_invoice': self.date_invoice,
           'date_due': self.date_due,
           'payment_term_id': self.payment_term_id.id,
-          'user_id': self.user_id.id,
+          'user_id': self._uid,
           'origin': self.number,
           'x_idorigen': self.id,
           'x_estado_de_promocion': 'No aplica'
@@ -137,11 +137,11 @@ class procesadora(models.Model):
              'partner_shipping_id': cliente.id,
              'date_order': record.date_invoice,
              'payment_term_id': cliente.property_payment_term_id.id,
-             'user_id': user.id,
+             'user_id': self._uid,
              'x_studio_idinvoice1': record.id,
              'company_id': cia,
-             'create_uid': user.id,
-             'write_uid': user.id,
+             'create_uid': self._uid,
+             'write_uid': self._uid,
              'state': 'draft',
              'warehouse_id': 5
              }
