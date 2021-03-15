@@ -124,7 +124,7 @@ class procesadora(models.Model):
          record = self
          cia = 3
          if record.partner_id.vat:
-             cliente = self.env['res.partner'].sudo().search('&', '&', ('company_id', '=', cia), ('vat', '=', record.partner_id.vat),
+             cliente = self.env['res.partner'].sudo().search(['&', '&', ('company_id', '=', cia), ('vat', '=', record.partner_id.vat),
                                                              ('customer', '=', 'TRUE')])[0]
          else:
              cliente = self.env['res.partner'].sudo().search(['&', '&', ('company_id', '=', cia), ('vat', '=', 'XAXX010101000'),
