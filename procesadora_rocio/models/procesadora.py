@@ -185,15 +185,15 @@ class procesadora(models.Model):
          record['x_estado_de_copia'] = 'Copiado en Borrador'
 
     #esta parte es para que cuando se valide la copia le devuelva el numero al que fue copiada la factura
-    @api.multi
-    def regreso_fv1_fv3(self):
-        record = self
-        fe1 = self.env['account.invoice'].sudo().search([('id','=',record.x_idorigen)])
-        fe1['x_studio_estado_de_copia'] = record.move_id.name
+     @api.multi
+     def regreso_fv1_fv3(self):
+         record = self
+         fe1 = self.env['account.invoice'].sudo().search([('id','=',record.x_idorigen)])
+         fe1['x_studio_estado_de_copia'] = record.move_id.name
 
-    @api.multi
-    def regreso_fv3_ncv3(self):
-        record = self
-        fe1 = self.env['account.invoice'].sudo().search([('id','=',record.x_studio_idinvoice1)])
-        fe1['x_studio_estado_de_promocion'] = record.move_id.name
+     @api.multi
+     def regreso_fv3_ncv3(self):
+         record = self
+         fe1 = self.env['account.invoice'].sudo().search([('id','=',record.x_studio_idinvoice1)])
+         fe1['x_studio_estado_de_promocion'] = record.move_id.name
 
