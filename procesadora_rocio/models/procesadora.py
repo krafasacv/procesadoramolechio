@@ -68,8 +68,7 @@ class procesadora(models.Model):
          cia = 3
          if record.partner_id.vat:
              cliente = env['res.partner'].sudo().search(
-                 ['&', '&', ('company_id', '=', cia), ('vat', '=', record.partner_id.vat), ('customer', '=', 'TRUE')])[
-                 0]
+                 ['&', '&', ('company_id', '=', cia), ('vat', '=', record.partner_id.vat), ('customer', '=', 'TRUE')])[0]
          else:
              cliente = env['res.partner'].sudo().search(
                  ['&', '&', ('company_id', '=', cia), ('vat', '=', 'XAXX010101000'), ('customer', '=', 'TRUE')])[0]
