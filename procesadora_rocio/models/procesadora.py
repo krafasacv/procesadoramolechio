@@ -57,7 +57,7 @@ class procesadora(models.Model):
                                 'invoice_id': idnew.id,
                                 }
                         idnews = self.env['account.invoice.line'].create(dic2)
-                        env.cr.commit()
+                        self.env.cr.commit()
 
           self['x_estado_de_promocion'] = 'Esperando Validación'
           #record['x_studio_pruebas'] = 'nuevo id de factura: ' + str(idnew) + 'nuevo id de lineas: ' + str(idnews)
