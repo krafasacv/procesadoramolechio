@@ -84,8 +84,8 @@ class procesadora(models.Model):
                 'x_idorigen': record.id,
                 'company_id': cia,
                 'journal_id': 27,  # de donde se puedo tomar este dato ?????
-                'create_uid': record.user.id,
-                'write_uid': record.user.id,
+                'create_uid': self._uid,
+                'write_uid': self._uid,
                 'partner_shipping_id': cliente.id,
                 'x_estado_de_promocion': 'Sin promoción'
                 }
