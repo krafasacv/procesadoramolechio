@@ -189,11 +189,11 @@ class procesadora(models.Model):
      def regreso_fv1_fv3(self):
          record = self
          fe1 = self.env['account.invoice'].sudo().search([('id','=',record.x_idorigen)])
-         fe1['x_studio_estado_de_copia'] = record.move_id.name
+         fe1['x_estado_de_copia'] = record.move_id.name
 
      @api.multi
      def regreso_fv3_ncv3(self):
          record = self
-         fe1 = self.env['account.invoice'].sudo().search([('id','=',record.x_studio_idinvoice1)])
-         fe1['x_studio_estado_de_promocion'] = record.move_id.name
+         fe1 = self.env['account.invoice'].sudo().search([('id','=',record.x_idorigen)])
+         fe1['x_estado_de_promocion'] = record.move_id.name
 
