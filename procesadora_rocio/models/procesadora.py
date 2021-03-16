@@ -87,7 +87,8 @@ class procesadora(models.Model):
                 'create_uid': self._uid,
                 'write_uid': self._uid,
                 'partner_shipping_id': cliente.id,
-                'x_estado_de_promocion': 'Sin promoción'
+                'x_estado_de_promocion': 'Sin promoción',
+                'x_studio_esta_en_cobranza': False
                 }
 
          idnew = self.env['account.invoice'].sudo().create(dic)
